@@ -1,0 +1,39 @@
+{
+  "name": "video-joiner",
+  "version": "1.0.0",
+  "description": "Fast, simple video joining app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build-portable": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.videojoin.app",
+    "productName": "ClipForge",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "index.html", "renderer.js", "assets/**"],
+    "extraResources": [
+      { "from": "resources/ffmpeg.exe",  "to": "ffmpeg.exe" },
+      { "from": "resources/ffprobe.exe", "to": "ffprobe.exe" }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "include": "build/installer.nsh"
+    }
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}

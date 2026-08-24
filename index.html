@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ClipForge</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f3f3f3; --surface: #ffffff; --surface2: #fafafa;
+      --border: #e1e1e1; --accent: #0078d4; --accent2: #ff6b35;
+      --accent3: #2899f5; --text: #1a1a1a; --muted: #767676;
+      --danger: #c42b1c; --radius: 8px;
+    }
+    body { font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; background: var(--bg); color: var(--text);
+      height: 100vh; display: flex; flex-direction: column; overflow: hidden; user-select: none; }
+
+    /* TITLEBAR */
+    #titlebar { display: flex; align-items: center; justify-content: space-between;
+      height: 42px; padding: 0 16px 0 20px; background: var(--bg);
+      border-bottom: 1px solid var(--border); -webkit-app-region: drag; flex-shrink: 0; }
+    #titlebar .logo { font-size: 13px; font-weight: 800; letter-spacing: 0.12em;
+      color: var(--accent); text-transform: uppercase; }
+    #titlebar .logo span { color: var(--muted); }
+    #win-controls { display: flex; gap: 6px; -webkit-app-region: no-drag; }
+    #win-controls button { width: 28px; height: 28px; border-radius: 4px; border: none;
+      background: transparent; color: var(--muted); font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+    #win-controls button:hover { background: var(--border); color: var(--text); }
+    #win-controls button.close:hover { background: var(--danger); color: #fff; }
+
+    /* TABS — segmented control */
+    #tabs { display: flex; gap: 3px; padding: 14px 20px 0; flex-shrink: 0; }
+    .tab-btn { padding: 7px 18px; border-radius: 999px; border: 1px solid transparent;
+      background: transparent; color: var(--muted); font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s; }
+    .tab-btn.active { background: var(--surface); color: var(--text); border-color: var(--accent3);
+      box-shadow: 0 2px 8px rgba(31,143,207,0.12); }
+    .tab-btn:hover:not(.active) { color: var(--text); background: rgba(0,0,0,0.03); }
+
+    /* STEP LABEL */
+    .step-label { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+    .step-num { display: flex; align-items: center; justify-content: center; width: 19px; height: 19px;
+      border-radius: 50%; background: var(--accent3); color: #fff; font-size: 12px; font-weight: 700;
+      font-family: 'Cascadia Mono', 'Consolas', monospace; flex-shrink: 0; }
+    .step-label h3 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--text); }
+    .step-label .step-hint { font-size: 12px; color: var(--muted); font-family: 'Cascadia Mono', 'Consolas', monospace; margin-left: auto; }
+
+    /* PANELS */
+    #app { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 8px 20px 20px; min-height: 0; }
+    .tab-panel { display: none; flex: 1; overflow: hidden; flex-direction: column; gap: 16px;
+      background: transparent; border: none; padding: 4px 0 0; min-height: 0; }
+    .tab-panel.active { display: flex; }
+
+    /* CARD — subtle elevation grouping */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+
+    /* DROP ZONE — compact horizontal bar, queue gets the real estate */
+    .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 12px 16px;
+      text-align: left; cursor: pointer; transition: border-color 0.2s, background 0.2s; flex-shrink: 0;
+      display: flex; align-items: center; gap: 14px; }
+    .drop-zone.drag-over { border-color: var(--accent); background: rgba(0,120,212,0.08); }
+    .drop-zone .drop-icon { font-size: 22px; flex-shrink: 0; }
+    .drop-zone .drop-copy { flex: 1; min-width: 0; }
+    .drop-zone h2 { font-size: 14px; font-weight: 700; margin-bottom: 1px; }
+    .drop-zone p { font-size: 12px; color: var(--muted); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+    .browse-btn { display: inline-block; padding: 9px 20px; flex-shrink: 0;
+      background: var(--accent); color: #fff; font-weight: 700; font-size: 12px;
+      letter-spacing: 0.04em; border-radius: var(--radius); cursor: pointer; border: none;
+      font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; transition: opacity 0.15s, transform 0.1s; }
+    .browse-btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .browse-btn.secondary { background: transparent; color: var(--accent3);
+      border: 1px solid var(--accent3); margin-left: 8px; }
+    .browse-btn.secondary:hover { background: rgba(31,143,207,0.10); opacity: 1; }
+
+    /* LIST */
+    .list-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .list-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .list-header .list-header-left { display: flex; align-items: center; gap: 8px; }
+    .list-header button { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; padding: 3px 9px;
+      border-radius: 4px; border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer; transition: all 0.15s; }
+    .list-header button:hover { border-color: var(--danger); color: var(--danger); }
+    .scroll-list { list-style: none; overflow-y: auto; flex: 1; display: flex;
+      flex-direction: column; gap: 5px; padding-right: 4px; }
+    .queue-totals { display: flex; gap: 16px; flex-shrink: 0; padding: 9px 14px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: var(--radius); font-family: 'Cascadia Mono', 'Consolas', monospace;
+      font-size: 12px; color: var(--muted); }
+    .queue-totals strong { color: var(--text); font-weight: 700; }
+    .queue-totals.hidden { display: none; }
+    .scroll-list::-webkit-scrollbar { width: 4px; }
+    .scroll-list::-webkit-scrollbar-track { background: transparent; }
+    .scroll-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* FILE ITEM */
+    .file-item { display: flex; align-items: center; gap: 10px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px;
+      cursor: grab; transition: border-color 0.15s; animation: fadeSlide 0.2s ease; }
+    @keyframes fadeSlide { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
+    .file-item:active { cursor: grabbing; }
+    .file-item.drag-target-above { border-top: 2px solid var(--accent); }
+    .file-item.drag-target-below { border-bottom: 2px solid var(--accent); }
+    .file-item.dragging { opacity: 0.3; }
+    .drag-handle { color: var(--muted); font-size: 14px; flex-shrink: 0; cursor: grab; }
+    .drag-handle:hover { color: var(--text); }
+    .file-index { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+      border-radius: 50%; background: var(--surface2); border: 1px solid var(--border);
+      font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .file-icon { font-size: 16px; flex-shrink: 0; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-meta { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted); margin-top: 2px;
+      display: flex; gap: 8px; align-items: center; }
+    .file-meta .dot { opacity: 0.5; }
+    .file-duration { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--accent3);
+      background: rgba(31,143,207,0.08); border-radius: 4px; padding: 3px 8px; flex-shrink: 0; font-weight: 700; }
+    .remove-btn { background: none; border: none; color: var(--muted); font-size: 13px;
+      cursor: pointer; padding: 2px 4px; border-radius: 3px; flex-shrink: 0; transition: color 0.15s; }
+    .remove-btn:hover { color: var(--danger); }
+    .empty-state { text-align: center; padding: 22px 24px; color: var(--muted); display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 5px; height: 100%; }
+    .empty-state .empty-icon { font-size: 26px; opacity: 0.3; margin-bottom: 2px; }
+    .empty-state .empty-title { font-size: 14px; font-weight: 700; color: var(--text); opacity: 0.55; }
+    .empty-state .empty-sub { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted); }
+
+    /* FOLDER ITEM */
+    .folder-item { background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; animation: fadeSlide 0.2s ease; }
+    .folder-header { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; }
+    .folder-toggle { font-size: 12px; color: var(--muted); flex-shrink: 0; transition: transform 0.2s; }
+    .folder-toggle.open { transform: rotate(90deg); }
+    .folder-icon { font-size: 16px; flex-shrink: 0; }
+    .folder-info { flex: 1; min-width: 0; }
+    .folder-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .folder-meta { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted); margin-top: 1px; }
+    .folder-files { display: none; border-top: 1px solid var(--border); padding: 6px 12px; }
+    .folder-files.open { display: block; }
+    .folder-file-row { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted);
+      padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .folder-file-row::before { content: '▸ '; color: var(--border); }
+
+    /* OPTIONS ROW */
+    .options-row { display: flex; gap: 18px; flex-shrink: 0; }
+    .option-toggle { display: flex; align-items: center; gap: 7px; cursor: pointer;
+      font-size: 12px; color: var(--muted); user-select: none; }
+    .option-toggle input { accent-color: var(--accent3); cursor: pointer; }
+    .option-toggle:hover { color: var(--text); }
+
+    /* OUTPUT SECTION — promoted to its own labeled card */
+    .output-card { flex-shrink: 0; }
+    .output-row { display: flex; align-items: center; gap: 10px; flex: 1;
+      background: var(--surface2); border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 11px 14px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+    .output-row:hover { border-color: var(--accent3); background: rgba(31,143,207,0.05); }
+    .out-icon { font-size: 16px; color: var(--accent3); flex-shrink: 0; }
+    .output-path-text { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--muted);
+      flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .output-path-text.has-path { color: var(--text); font-weight: 600; }
+    .output-row.has-path { border-style: solid; border-color: var(--border); background: var(--surface); }
+    .output-dir { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex-shrink: 1; }
+    .output-name-input { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--text);
+      font-weight: 600; background: transparent; border: none; border-bottom: 1px dashed var(--border);
+      padding: 1px 2px; min-width: 60px; flex-shrink: 0; cursor: text; }
+    .output-name-input:focus { outline: none; border-bottom-color: var(--accent3); }
+    .output-name-input:hover { border-bottom-color: var(--accent3); }
+    .browse-icon-btn { flex-shrink: 0; background: transparent; border: 1px solid var(--border);
+      border-radius: 4px; color: var(--muted); font-size: 12px; padding: 4px 8px; cursor: pointer;
+      font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; transition: all 0.15s; }
+    .browse-icon-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+    .output-label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); }
+    .status-line { font-size: 12px; color: var(--muted); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+    .status-line.ready { color: var(--accent3); }
+
+    /* BOTTOM BAR */
+    .bottom-bar { display: flex; align-items: stretch; gap: 10px; flex-shrink: 0; }
+    .bottom-bar .bottom-stack { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .join-btn { padding: 0 32px; min-width: 200px; background: var(--accent); color: #fff; border: none;
+      border-radius: var(--radius); font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 14px; font-weight: 800;
+      letter-spacing: 0.04em; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s; flex-shrink: 0; white-space: nowrap;
+      box-shadow: 0 2px 10px rgba(0,120,212,0.25); }
+    .join-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,120,212,0.35); }
+    .join-btn:disabled { opacity: 0.25; cursor: not-allowed; box-shadow: none; }
+
+    /* FOLDER MODE OPTIONS */
+    #folder-mode-row { display: flex; gap: 8px; flex-shrink: 0; }
+    .mode-btn { flex: 1; padding: 10px 8px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em; cursor: pointer;
+      transition: all 0.15s; text-align: center; line-height: 1.4; }
+    .mode-btn .mode-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+    .mode-btn .mode-label { font-size: 12px; font-weight: 700; display: block; }
+    .mode-btn .mode-desc { font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted); display: block; margin-top: 2px; }
+    .mode-btn.active { border-color: var(--accent3); color: var(--accent3); background: rgba(31,143,207,0.08); }
+    .mode-btn.active .mode-desc { color: var(--accent3); opacity: 0.7; }
+    .mode-btn:hover:not(.active) { border-color: var(--border); color: var(--text); }
+
+    /* PROGRESS OVERLAY */
+    #progress-overlay { display: none; position: fixed; inset: 0; background: rgba(20,18,12,0.92);
+      z-index: 100; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+    #progress-overlay.active { display: flex; }
+    #progress-overlay h3 { font-size: 14px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #fff; }
+    #progress-card { width: 400px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+    #current-op { font-size: 12px; color: #fff; font-family: 'Cascadia Mono', 'Consolas', monospace;
+      display: flex; align-items: center; gap: 8px; }
+    #current-op .op-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+      animation: pulse 1.2s ease-in-out infinite; flex-shrink: 0; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    #current-op .op-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #batch-step { font-size: 12px; color: rgba(255,255,255,0.5); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+    #progress-bar-wrap { width: 100%; height: 6px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+    #progress-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width 0.3s ease; }
+    #batch-progress-wrap { width: 100%; height: 3px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+    #batch-progress-bar { height: 100%; width: 0%; background: var(--accent3); border-radius: 4px; transition: width 0.4s ease; }
+    #progress-stats { display: flex; justify-content: space-between; font-family: 'Cascadia Mono', 'Consolas', monospace;
+      font-size: 12px; color: rgba(255,255,255,0.55); }
+    #progress-stats span strong { color: #fff; }
+
+    /* CUT TAB */
+    #cut-track { position: relative; height: 36px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); }
+    #cut-track-fill { position: absolute; top: 0; bottom: 0; left: 0%; right: 0%; background: rgba(0,120,212,0.18);
+      border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+    .cut-handle { position: absolute; top: -1px; bottom: -1px; width: 14px; margin-left: -7px;
+      background: var(--accent); border-radius: 4px; cursor: ew-resize; box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+    .cut-handle::after { content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 12px;
+      background: #fff; transform: translate(-50%,-50%); border-radius: 1px; }
+    .cut-time-row { display: flex; align-items: center; gap: 18px; }
+    .cut-time-row label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+    .cut-time-row input { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 13px; color: var(--text);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 6px 9px; width: 80px; }
+    .cut-time-row input:focus { outline: none; border-color: var(--accent3); }
+    .cut-selected { margin-left: auto; font-size: 12px; color: var(--muted); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+    .cut-selected strong { color: var(--accent3); font-weight: 700; }
+
+    /* CONVERT TAB */
+    .conv-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; flex-shrink: 0; }
+    .conv-field { display: flex; flex-direction: column; gap: 4px; }
+    .conv-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+    .conv-select { font-family: 'Segoe UI Variable Display','Segoe UI',sans-serif; font-size: 12px;
+      color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 6px 10px; cursor: pointer; transition: border-color 0.15s; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23767676'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+    .conv-select:focus { outline: none; border-color: var(--accent3); }
+    .conv-text-input { font-family: 'Cascadia Mono','Consolas',monospace; font-size: 12px;
+      color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 6px 10px; transition: border-color 0.15s; }
+    .conv-text-input:focus { outline: none; border-color: var(--accent3); }
+    .conv-quality-row { display: flex; align-items: center; gap: 8px; }
+    .conv-quality-row input[type="range"] { flex: 1; accent-color: var(--accent3); }
+    .conv-quality-row input[type="number"] { width: 48px; text-align: right; }
+    .conv-section-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--accent3); grid-column: 1/-1; padding-top: 4px; border-top: 1px solid var(--border); margin-top: 2px; }
+    .conv-section-title:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+    .conv-checks { display: flex; gap: 16px; flex-wrap: wrap; grid-column: 1/-1; }
+    .preset-row { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+    .preset-btn { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .preset-btn.active { background: var(--accent3); color: #fff; border-color: var(--accent3); }
+    .preset-btn:hover:not(.active) { border-color: var(--accent3); color: var(--text); }
+    .conv-file-item { display: flex; align-items: center; gap: 10px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px;
+      animation: fadeSlide 0.2s ease; }
+    .conv-file-status { font-size: 11px; font-family: 'Cascadia Mono','Consolas',monospace;
+      padding: 2px 8px; border-radius: 999px; font-weight: 700; flex-shrink: 0; white-space: nowrap; }
+    .conv-file-status.pending  { background: rgba(118,118,118,0.10); color: var(--muted); }
+    .conv-file-status.working  { background: rgba(0,120,212,0.12); color: var(--accent); }
+    .conv-file-status.done     { background: rgba(16,137,62,0.12); color: #10893e; }
+    .conv-file-status.error    { background: rgba(196,43,28,0.10); color: var(--danger); }
+
+    /* DUPLICATES TAB */
+    .options-row input[type="range"] { accent-color: var(--accent3); width: 120px; cursor: pointer; }
+    .join-btn.danger { background: var(--danger); box-shadow: 0 2px 10px rgba(196,43,28,0.25); }
+    .dupe-group { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 12px; animation: fadeSlide 0.2s ease; }
+    .dupe-group-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+      font-size: 12px; font-weight: 700; color: var(--text); }
+    .dupe-badge { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 999px; }
+    .dupe-badge.exact { background: rgba(196,43,28,0.10); color: var(--danger); }
+    .dupe-badge.similar { background: rgba(31,143,207,0.10); color: var(--accent3); }
+    .dupe-file-row { display: flex; align-items: center; gap: 10px; padding: 5px 0;
+      border-top: 1px solid var(--border); }
+    .dupe-file-row:first-of-type { border-top: none; }
+    .dupe-file-row input[type="checkbox"] { accent-color: var(--danger); cursor: pointer; flex-shrink: 0; }
+    .dupe-file-info { flex: 1; min-width: 0; }
+    .dupe-file-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dupe-file-dir { font-size: 11px; font-family: 'Cascadia Mono', 'Consolas', monospace; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dupe-file-size { font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 12px; color: var(--muted);
+      flex-shrink: 0; }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(60px);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 11px 20px; font-size: 12px; font-weight: 600; transition: transform 0.3s ease, opacity 0.3s;
+      opacity: 0; z-index: 200; white-space: nowrap; }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    #toast.success { border-color: var(--accent); color: var(--accent); }
+    #toast.error { border-color: var(--danger); color: var(--danger); }
+  </style>
+</head>
+<body>
+
+<div id="titlebar">
+  <div class="logo">Clip<span>Forge</span></div>
+  <div id="win-controls">
+    <button id="btn-min">&#x2013;</button>
+    <button id="btn-max">&#x25A1;</button>
+    <button id="btn-close" class="close">&#x2715;</button>
+  </div>
+</div>
+
+<div id="tabs">
+  <button class="tab-btn active" data-tab="files">📄 Files</button>
+  <button class="tab-btn" data-tab="folders">📁 Folders</button>
+  <button class="tab-btn" data-tab="cut">✂️ Cut</button>
+  <button class="tab-btn" data-tab="dupes">🧬 Duplicates</button>
+  <button class="tab-btn" data-tab="convert">🔄 Convert</button>
+</div>
+
+<div id="app">
+
+  <!-- ── FILES TAB ── -->
+  <div class="tab-panel active" id="tab-files">
+    <div class="step-label">
+      <span class="step-num">1</span><h3>Add Videos</h3>
+      <span class="step-hint">drag &amp; drop or browse</span>
+    </div>
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">🎬</div>
+      <div class="drop-copy">
+        <h2>Drop videos here</h2>
+        <p>MP4 · MOV · AVI · MKV · WEBM · FLV</p>
+      </div>
+      <button class="browse-btn" id="browse-btn">Browse Files</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">2</span><h3>Arrange Queue</h3>
+      <span class="step-hint">drag rows to reorder — order = output order</span>
+    </div>
+    <div class="list-wrap">
+      <div class="list-header">
+        <div class="list-header-left"><h3 id="list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Queue — 0 files</h3></div>
+        <button id="clear-all-btn">Clear All</button>
+      </div>
+      <ul class="scroll-list" id="file-list">
+        <li class="empty-state">
+          <div class="empty-icon">🎞�?</div>
+          <div class="empty-title">No videos added yet</div>
+          <div class="empty-sub">Drag videos here, or click Browse Files above</div>
+        </li>
+      </ul>
+      <div class="queue-totals hidden" id="queue-totals">
+        <span>Files: <strong id="qt-count">0</strong></span>
+        <span>Total duration: <strong id="qt-duration">0:00</strong></span>
+      </div>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">3</span><h3>Choose Output &amp; Join</h3>
+    </div>
+    <div class="options-row">
+      <label class="option-toggle"><input type="checkbox" id="save-source-files" checked> Save to source folder</label>
+      <label class="option-toggle"><input type="checkbox" id="default-name-files" checked> Use default name</label>
+      <label class="option-toggle"><input type="checkbox" id="delete-source-files"> Delete source files when done</label>
+      <label class="option-toggle"><input type="checkbox" id="open-folder-files" checked> Open output folder when done</label>
+    </div>
+    <div class="bottom-bar">
+      <div class="bottom-stack">
+        <div class="output-label">Output File</div>
+        <div class="output-row" id="output-row">
+          <span class="out-icon">📂</span>
+          <span class="output-dir" id="output-dir">Click Browse to choose a destination…</span>
+          <input type="text" class="output-name-input hidden" id="output-name" style="display:none">
+          <button class="browse-icon-btn" id="output-browse-btn">Browse…</button>
+        </div>
+        <div class="status-line" id="status-line-files">Add at least 2 videos and choose an output file to continue</div>
+      </div>
+      <button class="join-btn" id="join-btn" disabled>Join Videos</button>
+    </div>
+  </div>
+
+  <!-- ── FOLDERS TAB ── -->
+  <div class="tab-panel" id="tab-folders">
+
+    <div class="step-label">
+      <span class="step-num">1</span><h3>Add Folders</h3>
+      <span class="step-hint">drag &amp; drop or browse — each folder is one group of clips</span>
+    </div>
+    <div class="drop-zone" id="folder-drop-zone">
+      <div class="drop-icon">�?</div>
+      <div class="drop-copy">
+        <h2>Drop folders here</h2>
+        <p>Each folder = one group of clips (e.g. one hour)</p>
+      </div>
+      <button class="browse-btn" id="browse-folders-btn">Browse Folders</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">2</span><h3>Choose Mode</h3>
+    </div>
+    <div id="folder-mode-row">
+      <button class="mode-btn active" data-mode="per-folder">
+        <span class="mode-icon">📦</span>
+        <span class="mode-label">Per Folder</span>
+        <span class="mode-desc">One output file per folder</span>
+      </button>
+      <button class="mode-btn" data-mode="all-in-one">
+        <span class="mode-icon">🎯</span>
+        <span class="mode-label">All In One</span>
+        <span class="mode-desc">All folders → single file</span>
+      </button>
+      <button class="mode-btn" data-mode="both">
+        <span class="mode-icon">⚡</span>
+        <span class="mode-label">Both</span>
+        <span class="mode-desc">Per folder + merge all</span>
+      </button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">3</span><h3>Review Folders</h3>
+      <span class="step-hint">click a folder to preview its clips</span>
+    </div>
+    <div class="list-wrap">
+      <div class="list-header">
+        <div class="list-header-left"><h3 id="folder-list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Folders — 0 added</h3></div>
+        <button id="clear-folders-btn">Clear All</button>
+      </div>
+      <ul class="scroll-list" id="folder-list">
+        <li class="empty-state">
+          <div class="empty-icon">�?</div>
+          <div class="empty-title">No folders added yet</div>
+          <div class="empty-sub">Drag folders here, or click Browse Folders above</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">4</span><h3>Choose Output &amp; Join</h3>
+    </div>
+    <div class="options-row">
+      <label class="option-toggle"><input type="checkbox" id="save-source-folders" checked> Save to source folder</label>
+      <label class="option-toggle"><input type="checkbox" id="default-name-folders" checked> Use default name</label>
+      <label class="option-toggle"><input type="checkbox" id="delete-source-folders"> Delete source files when done</label>
+      <label class="option-toggle"><input type="checkbox" id="open-folder-folders" checked> Open output folder when done</label>
+    </div>
+    <div class="bottom-bar">
+      <div class="bottom-stack">
+        <div class="output-label">Output Folder</div>
+        <div class="output-row" id="folder-output-row">
+          <span class="out-icon">📂</span>
+          <span class="output-path-text" id="folder-output-path">Click to choose a destination…</span>
+        </div>
+        <div class="output-label" id="final-output-label" style="display:none">Final Merged File</div>
+        <div class="output-row" id="final-output-row" style="display:none">
+          <span class="out-icon" style="color:var(--accent)">🎬</span>
+          <span class="output-dir" id="final-output-dir">Click Browse to set final merged file…</span>
+          <input type="text" class="output-name-input" id="final-output-name" style="display:none">
+          <button class="browse-icon-btn" id="final-output-browse-btn">Browse…</button>
+        </div>
+        <div class="status-line" id="status-line-folders">Add folders and choose an output destination to continue</div>
+      </div>
+      <button class="join-btn" id="folder-join-btn" disabled>Join Folders</button>
+    </div>
+  </div>
+
+  <!-- ── CUT TAB ── -->
+  <div class="tab-panel" id="tab-cut">
+    <div class="step-label">
+      <span class="step-num">1</span><h3>Choose a Video</h3>
+      <span class="step-hint">drag &amp; drop or browse — pick one video to trim</span>
+    </div>
+    <div class="drop-zone" id="cut-drop-zone">
+      <div class="drop-icon">✂️</div>
+      <div class="drop-copy">
+        <h2>Drop a video here</h2>
+        <p>MP4 · MOV · AVI · MKV · WEBM · FLV</p>
+      </div>
+      <button class="browse-btn" id="browse-cut-btn">Browse File</button>
+    </div>
+
+    <div id="cut-empty" class="empty-state" style="flex:1;">
+      <div class="empty-icon">✂️</div>
+      <div class="empty-title">No video selected</div>
+      <div class="empty-sub">Drag a video here, or click Browse File above</div>
+    </div>
+
+    <div id="cut-body" class="hidden" style="display:none; flex:1; overflow:hidden; flex-direction:column; gap:16px; min-height:0;">
+      <div class="card" style="flex-shrink:0;">
+        <div class="file-item" style="cursor:default;" id="cut-file-item">
+          <span class="file-icon">🎬</span>
+          <div class="file-info">
+            <div class="file-name" id="cut-file-name">—</div>
+            <div class="file-meta"><span id="cut-file-res">—</span><span class="dot">·</span><span id="cut-file-size">—</span></div>
+          </div>
+          <div class="file-duration" id="cut-file-duration">0:00</div>
+          <button class="remove-btn" id="cut-remove-btn" title="Remove">✕</button>
+        </div>
+      </div>
+
+      <div class="step-label">
+        <span class="step-num">2</span><h3>Set Trim Range</h3>
+        <span class="step-hint">drag the handles or type exact times</span>
+      </div>
+      <div class="card" style="flex-shrink:0; display:flex; flex-direction:column; gap:14px;">
+        <div id="cut-track">
+          <div id="cut-track-fill"></div>
+          <div id="cut-handle-start" class="cut-handle" tabindex="0"></div>
+          <div id="cut-handle-end" class="cut-handle" tabindex="0"></div>
+        </div>
+        <div class="cut-time-row">
+          <label>Start<input type="text" id="cut-start-input" value="0:00" inputmode="numeric"></label>
+          <label>End<input type="text" id="cut-end-input" value="0:00" inputmode="numeric"></label>
+          <div class="cut-selected">Selected: <strong id="cut-selected-duration">0:00</strong></div>
+        </div>
+      </div>
+
+      <div class="step-label">
+        <span class="step-num">3</span><h3>Choose Output &amp; Cut</h3>
+      </div>
+      <div class="options-row">
+        <label class="option-toggle"><input type="checkbox" id="save-source-cut" checked> Save to source folder</label>
+        <label class="option-toggle"><input type="checkbox" id="default-name-cut" checked> Use default name</label>
+        <label class="option-toggle"><input type="checkbox" id="delete-source-cut"> Delete source file when done</label>
+        <label class="option-toggle"><input type="checkbox" id="open-folder-cut" checked> Open output folder when done</label>
+      </div>
+      <div class="bottom-bar">
+        <div class="bottom-stack">
+          <div class="output-label">Output File</div>
+          <div class="output-row" id="cut-output-row">
+            <span class="out-icon">📂</span>
+            <span class="output-dir" id="cut-output-dir">Click Browse to choose a destination…</span>
+            <input type="text" class="output-name-input" id="cut-output-name" style="display:none">
+            <button class="browse-icon-btn" id="cut-output-browse-btn">Browse…</button>
+          </div>
+          <div class="status-line" id="status-line-cut">Choose an output file to continue</div>
+        </div>
+        <button class="join-btn" id="cut-btn" disabled>Cut Video</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CONVERT TAB ── -->
+  <div class="tab-panel" id="tab-convert">
+    <div class="step-label">
+      <span class="step-num">1</span><h3>Add Files</h3>
+      <span class="step-hint">drag &amp; drop or browse — any video or audio</span>
+    </div>
+    <div class="drop-zone" id="conv-drop-zone">
+      <div class="drop-icon">🔄</div>
+      <div class="drop-copy">
+        <h2>Drop files here</h2>
+        <p>MP4 · MKV · MOV · AVI · WEBM · MP3 · AAC · FLAC · WAV</p>
+      </div>
+      <button class="browse-btn" id="browse-conv-btn">Browse Files</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">2</span><h3>Preset</h3>
+    </div>
+    <div class="preset-row" id="conv-preset-row">
+      <button class="preset-btn" data-preset="fast">⚡ Fast</button>
+      <button class="preset-btn active" data-preset="balanced">⚖ Balanced</button>
+      <button class="preset-btn" data-preset="hq">🎯 High Quality</button>
+      <button class="preset-btn" data-preset="mobile">📱 Mobile</button>
+      <button class="preset-btn" data-preset="youtube">📺 YouTube</button>
+      <button class="preset-btn" data-preset="audio">🎵 Audio Only</button>
+      <button class="preset-btn" data-preset="remux">🔁 Remux</button>
+      <button class="preset-btn" data-preset="archive">📦 Archive</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">3</span><h3>Settings</h3>
+    </div>
+    <div class="conv-settings card">
+      <div class="conv-section-title">Video</div>
+      <div class="conv-field">
+        <label class="conv-label">Format</label>
+        <select class="conv-select" id="conv-fmt">
+          <option>mp4</option><option>mkv</option><option>mov</option>
+          <option>avi</option><option>webm</option><option>mp3</option>
+          <option>aac</option><option>flac</option><option>wav</option><option>opus</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Video Codec</label>
+        <select class="conv-select" id="conv-vcodec">
+          <option value="libx264">H.264 (libx264)</option>
+          <option value="libx265">H.265 (libx265)</option>
+          <option value="libvpx-vp9">VP9</option>
+          <option value="copy">Copy (no re-encode)</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Quality (CRF) — lower = bigger file</label>
+        <div class="conv-quality-row">
+          <input type="range" id="conv-quality" min="0" max="100" value="55" step="1">
+          <input type="number" id="conv-quality-num" min="0" max="100" value="55" step="1" class="conv-text-input" style="width:52px;text-align:right;">
+        </div>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Speed</label>
+        <select class="conv-select" id="conv-speed">
+          <option value="fastest">Fastest</option>
+          <option value="fast">Fast</option>
+          <option value="balanced" selected>Balanced</option>
+          <option value="slow">Slow</option>
+          <option value="slowest">Slowest</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Resolution</label>
+        <select class="conv-select" id="conv-res">
+          <option value="original">Original</option>
+          <option value="p480">480p</option>
+          <option value="p720">720p</option>
+          <option value="p1080">1080p</option>
+          <option value="p1440">1440p</option>
+          <option value="p2160">4K (2160p)</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Frame Rate Override</label>
+        <input type="text" id="conv-fps" class="conv-text-input" placeholder="e.g. 30  (blank = keep)">
+      </div>
+
+      <div class="conv-section-title">Audio</div>
+      <div class="conv-field">
+        <label class="conv-label">Audio Codec</label>
+        <select class="conv-select" id="conv-acodec">
+          <option value="aac">AAC</option>
+          <option value="mp3">MP3</option>
+          <option value="libopus">Opus</option>
+          <option value="flac">FLAC</option>
+          <option value="copy">Copy</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Audio Bitrate</label>
+        <select class="conv-select" id="conv-abitrate">
+          <option>64k</option><option>96k</option><option>128k</option>
+          <option>160k</option><option selected>192k</option>
+          <option>256k</option><option>320k</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Channels</label>
+        <select class="conv-select" id="conv-channels">
+          <option value="1">Mono</option>
+          <option value="2" selected>Stereo</option>
+          <option value="6">5.1 Surround</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Sample Rate</label>
+        <select class="conv-select" id="conv-samplerate">
+          <option>44100</option><option selected>48000</option><option>96000</option>
+        </select>
+      </div>
+
+      <div class="conv-section-title">Filters &amp; Extras</div>
+      <div class="conv-field">
+        <label class="conv-label">Rotate</label>
+        <select class="conv-select" id="conv-rotate">
+          <option value="">None</option>
+          <option value="90">90°</option>
+          <option value="180">180°</option>
+          <option value="270">270°</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Denoise (0 = off)</label>
+        <div class="conv-quality-row">
+          <input type="range" id="conv-denoise" min="0" max="10" value="0" step="1">
+          <input type="number" id="conv-denoise-num" min="0" max="10" value="0" step="1" class="conv-text-input" style="width:52px;text-align:right;">
+        </div>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Extra ffmpeg flags</label>
+        <input type="text" id="conv-extra" class="conv-text-input" placeholder="-map 0:v:0 -map 0:a:1 …">
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Trim start (blank = from start)</label>
+        <input type="text" id="conv-trim-start" class="conv-text-input" placeholder="e.g. 00:00:05 or 5">
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Trim end (blank = to end)</label>
+        <input type="text" id="conv-trim-end" class="conv-text-input" placeholder="e.g. 00:01:30 or 90">
+      </div>
+      <div class="conv-field" style="grid-column:1/-1;">
+        <label class="conv-label">Burn-in subtitles</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="text" id="conv-sub-file" class="conv-text-input" placeholder="No subtitle file selected" readonly style="flex:1;">
+          <button class="browse-btn secondary" id="conv-sub-browse" style="margin-left:0;padding:6px 14px;">Choose…</button>
+          <button class="browse-btn secondary" id="conv-sub-clear" style="margin-left:0;padding:6px 14px;">Clear</button>
+        </div>
+      </div>
+
+      <div class="conv-section-title">Advanced</div>
+      <div class="conv-field">
+        <label class="conv-label">Rate control</label>
+        <select class="conv-select" id="conv-ratemode">
+          <option value="crf">CRF (quality-based)</option>
+          <option value="bitrate">Target bitrate</option>
+        </select>
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Target video bitrate</label>
+        <input type="text" id="conv-avg-bitrate" class="conv-text-input" value="2M" placeholder="e.g. 2M, 4500k">
+      </div>
+      <div class="conv-field">
+        <label class="conv-label">Verify output</label>
+        <select class="conv-select" id="conv-verify">
+          <option value="off">Off</option>
+          <option value="quick" selected>Quick (duration)</option>
+          <option value="full">Full (decode)</option>
+        </select>
+      </div>
+      <div class="conv-checks">
+        <label class="option-toggle"><input type="checkbox" id="conv-include-audio" checked> Include audio</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-audio-only"> Audio only</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-flip-h"> Flip horizontal</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-flip-v"> Flip vertical</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-hwaccel"> Hardware accel</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-twopass"> Two-pass</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-faststart" checked> Faststart (mp4)</label>
+        <label class="option-toggle"><input type="checkbox" id="conv-burn-subs"> Burn subtitles</label>
+      </div>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">4</span><h3>Queue</h3>
+    </div>
+    <div class="list-wrap">
+      <div class="list-header">
+        <div class="list-header-left"><h3 id="conv-list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Queue — 0 files</h3></div>
+        <button id="clear-conv-btn">Clear</button>
+      </div>
+      <ul class="scroll-list" id="conv-list">
+        <li class="empty-state">
+          <div class="empty-icon">🔄</div>
+          <div class="empty-title">No files added yet</div>
+          <div class="empty-sub">Drop files above or click Browse Files</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="options-row">
+      <label class="option-toggle"><input type="checkbox" id="conv-save-source" checked> Save to source folder</label>
+      <label class="option-toggle"><input type="checkbox" id="conv-delete-source"> Delete source when done</label>
+      <label class="option-toggle"><input type="checkbox" id="conv-open-folder" checked> Open folder when done</label>
+      <label class="option-toggle" style="gap:6px;">Suffix <input type="text" id="conv-suffix" class="conv-text-input" value="_converted" style="width:110px;padding:2px 6px;"></label>
+    </div>
+    <div class="bottom-bar">
+      <div class="bottom-stack">
+        <div class="output-row" id="conv-output-row" style="display:none;">
+          <span class="out-icon">📂</span>
+          <span class="output-dir" id="conv-output-dir">Choose output folder…</span>
+          <button class="browse-icon-btn" id="conv-output-browse-btn">Browse…</button>
+        </div>
+        <div class="status-line" id="status-line-conv">Add files to convert</div>
+      </div>
+      <button class="join-btn" id="conv-btn" disabled>Convert All</button>
+    </div>
+  </div>
+
+  <!-- ── DUPLICATES TAB ── -->
+  <div class="tab-panel" id="tab-dupes">
+    <div class="step-label">
+      <span class="step-num">1</span><h3>Add Files or Folders</h3>
+      <span class="step-hint">drag &amp; drop or browse — folders are scanned recursively</span>
+    </div>
+    <div class="drop-zone" id="dupe-drop-zone">
+      <div class="drop-icon">🧬</div>
+      <div class="drop-copy">
+        <h2>Drop files or folders here</h2>
+        <p>Scans for duplicate or similar video files</p>
+      </div>
+      <button class="browse-btn" id="browse-dupe-files-btn">Browse Files</button>
+      <button class="browse-btn secondary" id="browse-dupe-folders-btn">Browse Folders</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">2</span><h3>Match Settings</h3>
+      <span class="step-hint" id="dupe-status"></span>
+    </div>
+    <div class="options-row" style="gap:28px; align-items:center;">
+      <label class="option-toggle" style="gap:10px; cursor:default;">Size tolerance
+        <input type="range" id="dupe-size-tol" min="0" max="20" value="2" step="1">
+        <input type="number" id="dupe-size-tol-num" min="0" max="20" value="2" step="1" class="output-name-input" style="width:48px; text-align:right;">%
+      </label>
+      <label class="option-toggle" style="gap:10px; cursor:default;">Name similarity
+        <input type="range" id="dupe-name-sim" min="0" max="100" value="70" step="5">
+        <input type="number" id="dupe-name-sim-num" min="0" max="100" value="70" step="5" class="output-name-input" style="width:48px; text-align:right;">%
+      </label>
+      <button class="browse-btn secondary" id="dupe-scan-btn" style="margin-left:auto;">Scan</button>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">3</span><h3>Results</h3>
+    </div>
+    <div class="list-wrap">
+      <div class="list-header">
+        <div class="list-header-left"><h3 id="dupe-list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Groups — 0 found</h3></div>
+        <button id="clear-dupes-btn">Clear</button>
+      </div>
+      <ul class="scroll-list" id="dupe-list">
+        <li class="empty-state">
+          <div class="empty-icon">🧬</div>
+          <div class="empty-title">No scan yet</div>
+          <div class="empty-sub">Drop files or folders above, then click Scan</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="bottom-bar">
+      <div class="bottom-stack">
+        <div class="status-line" id="status-line-dupes">Select files below, then delete the ones you don't want</div>
+      </div>
+      <button class="join-btn danger" id="dupe-delete-btn" disabled>Delete Selected</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- PROGRESS OVERLAY -->
+<div id="progress-overlay">
+  <h3 id="progress-title">Processing…</h3>
+  <div id="progress-card">
+    <div id="current-op"><span class="op-dot"></span><span class="op-name" id="current-op-name">Starting…</span></div>
+    <div id="batch-step"></div>
+    <div id="batch-progress-wrap"><div id="batch-progress-bar"></div></div>
+    <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+    <div id="progress-stats">
+      <span>Elapsed: <strong id="stat-elapsed">0:00</strong></span>
+      <span id="progress-label">Starting…</span>
+      <span>Remaining: <strong id="stat-remaining">—</strong></span>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="renderer.js"></script>
+</body>
+</html>
+
+
