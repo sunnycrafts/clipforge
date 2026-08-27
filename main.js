@@ -116,17 +116,6 @@ ipcMain.handle('open-folders', async () => {
 
 const VIDEO_EXTS = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i;
 
-function scanFolder(folderPath) {
-  try {
-    return fs.readdirSync(folderPath)
-      .filter(f => VIDEO_EXTS.test(f))
-      .sort()
-      .map(f => path.join(folderPath, f));
-  } catch (_) { return []; }
-}
-
-ipcMain.handle('scan-folder', (_, folderPath) => scanFolder(folderPath));
-
 function scanFolderRecursive(folderPath) {
   let results = [];
   let entries;
@@ -138,6 +127,14 @@ function scanFolderRecursive(folderPath) {
   }
   return results;
 }
+
+// Recursive so NVR/DVR-style exports (hourly subfolders, e.g. "2026Y08M20D00H")
+// are found; sorted by full path so chronological naming schemes join in order.
+function scanFolder(folderPath) {
+  return scanFolderRecursive(folderPath).sort();
+}
+
+ipcMain.handle('scan-folder', (_, folderPath) => scanFolder(folderPath));
 
 function hashFileSample(filePath, bytes = 2 * 1024 * 1024) {
   return new Promise((resolve) => {
@@ -354,6 +351,9 @@ ipcMain.handle('join-videos', async (_, { files, outputPath, deleteSource }) => 
 ipcMain.handle('join-folders', async (_, { folders, outputFolder, outputFile, mode, deleteSource }) => {
   const perFolderOutputs = [];
   const allFiles = folders.flatMap(f => f.files);
+  if (!allFiles.length) {
+    throw new Error('No video files found in the selected folder(s).');
+  }
 
   mainWindow.webContents.send('batch-status', {
     step: `Calculating total duration of ${allFiles.length} files…`, index: 0, total: 1,

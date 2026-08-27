@@ -312,7 +312,7 @@ function updateFoldersUI() {
   const needFinal = folderMode === 'all-in-one' || folderMode === 'both';
   finalOutputRow.style.display = needFinal ? 'flex' : 'none';
   document.getElementById('final-output-label').style.display = needFinal ? 'block' : 'none';
-  const ready = folders.length > 0 && folderOutputDir &&
+  const ready = folders.length > 0 && totalFiles > 0 && folderOutputDir &&
     (needFinal ? !!finalOutputFile : true);
   folderJoinBtn.disabled = !ready;
   folderJoinBtn.textContent = folders.length ? `Join ${folders.length} Folder${folders.length !== 1 ? 's' : ''}` : 'Join Folders';
@@ -321,6 +321,7 @@ function updateFoldersUI() {
   if (statusLine) {
     if (ready) { statusLine.textContent = `Ready — ${folders.length} folders (${totalFiles} files) will be processed`; statusLine.classList.add('ready'); }
     else if (!folders.length) { statusLine.textContent = 'Add at least one folder to continue'; statusLine.classList.remove('ready'); }
+    else if (!totalFiles) { statusLine.textContent = 'No video files found in the selected folder(s) — check they contain video clips'; statusLine.classList.remove('ready'); }
     else if (!folderOutputDir) { statusLine.textContent = 'Choose an output folder to continue'; statusLine.classList.remove('ready'); }
     else { statusLine.textContent = 'Set the final merged file destination to continue'; statusLine.classList.remove('ready'); }
   }
