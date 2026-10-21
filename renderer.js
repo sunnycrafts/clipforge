@@ -75,7 +75,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ─── Global drag & drop routing ────────────────────────────────────────────────
-const VIDEO_EXT = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i;
+const VIDEO_EXT = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|ts|mts|m2ts)$/i;
 document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
@@ -238,7 +238,7 @@ dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.clas
 dropZone.addEventListener('dragleave', (e) => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over'); });
 dropZone.addEventListener('drop', async (e) => {
   e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('drag-over');
-  const paths = [...e.dataTransfer.files].filter(f => /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i.test(f.name)).map(f => f.path);
+  const paths = [...e.dataTransfer.files].filter(f => VIDEO_EXT.test(f.name)).map(f => f.path);
   if (paths.length) await addFilePaths(paths); else showToast('No supported video files dropped', 'error');
 });
 
@@ -692,7 +692,7 @@ cutDropZone.addEventListener('dragover', (e) => { e.preventDefault(); cutDropZon
 cutDropZone.addEventListener('dragleave', (e) => { if (!cutDropZone.contains(e.relatedTarget)) cutDropZone.classList.remove('drag-over'); });
 cutDropZone.addEventListener('drop', async (e) => {
   e.preventDefault(); e.stopPropagation(); cutDropZone.classList.remove('drag-over');
-  const paths = [...e.dataTransfer.files].filter(f => /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i.test(f.name)).map(f => f.path);
+  const paths = [...e.dataTransfer.files].filter(f => VIDEO_EXT.test(f.name)).map(f => f.path);
   if (paths.length) await setCutFile(paths[0]); else showToast('No supported video file dropped', 'error');
 });
 
@@ -706,7 +706,7 @@ cutOutputDirEl.dataset.placeholder = 'Click Browse to choose a destination…';
 const refreshCutOutputField = setupOutputField({
   dirEl: cutOutputDirEl, nameInput: cutOutputNameEl, browseBtn: cutOutputBrowseBtn, row: cutOutputRow,
   srcCheckbox: saveSourceCut, nameCheckbox: defaultNameCut,
-  getDefault: () => cutFile ? { dir: dirname(cutFile.path), name: cutFile.name.replace(/\.[^.]+$/, '') + '_trimmed' + (cutFile.name.match(/\.[^.]+$/) || ['.mp4'])[0] } : null,
+  getDefault: () => cutFile ? { dir: dirname(cutFile.path), name: cutFile.name.replace(/\.[^.]+$/, '') + '_trimmed' + (/\.(ts|mts|m2ts)$/i.test(cutFile.name) ? '.mp4' : (cutFile.name.match(/\.[^.]+$/) || ['.mp4'])[0]) } : null,
   getPath: () => cutOutputPath, setPath: (p) => { cutOutputPath = p; },
   pickFn: (cur) => window.api.pickCutOutput(cur), onChange: updateCutUI,
 });
@@ -1243,6 +1243,33 @@ convBtn.addEventListener('click', async () => {
     window.api.openFolder(dirname(firstDone.outPath));
   }
 });
+
+// ─── Version + in-app history ─────────────────────────────────────────────────
+const appVersionBtn    = document.getElementById('app-version');
+const changelogOverlay = document.getElementById('changelog-overlay');
+const changelogBody    = document.getElementById('changelog-body');
+
+function renderChangelog(md) {
+  const inline = (t) => escapeHtml(t).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`(.+?)`/g, '<code>$1</code>');
+  let html = '', inList = false;
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  for (const line of md.split(/\r?\n/)) {
+    if (line.startsWith('## '))       { closeList(); html += `<h4>v${inline(line.slice(3))}</h4>`; }
+    else if (line.startsWith('### ')) { closeList(); html += `<h5>${inline(line.slice(4))}</h5>`; }
+    else if (line.startsWith('- '))   { if (!inList) { html += '<ul>'; inList = true; } html += `<li>${inline(line.slice(2))}</li>`; }
+  }
+  closeList();
+  return html || '<p>No version history available.</p>';
+}
+
+window.api.getAppInfo().then(({ version, changelog }) => {
+  document.title = `ClipForge v${version}`;
+  appVersionBtn.textContent = `v${version}`;
+  changelogBody.innerHTML = renderChangelog(changelog);
+}).catch(() => {});
+appVersionBtn.addEventListener('click', () => changelogOverlay.classList.add('active'));
+document.getElementById('changelog-close').addEventListener('click', () => changelogOverlay.classList.remove('active'));
+changelogOverlay.addEventListener('click', (e) => { if (e.target === changelogOverlay) changelogOverlay.classList.remove('active'); });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 refreshOutputField();

@@ -55,6 +55,12 @@ function createWindow() {
 }
 
 app.whenReady().then(() => { createWindow(); detectHwEncoders(); });
+
+ipcMain.handle('get-app-info', () => {
+  let changelog = '';
+  try { changelog = fs.readFileSync(path.join(__dirname, 'CHANGELOG.md'), 'utf8'); } catch (_) {}
+  return { version: app.getVersion(), changelog };
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 ipcMain.on('window-minimize', () => mainWindow.minimize());
@@ -90,7 +96,7 @@ ipcMain.handle('pick-output-folder', async (_, defaultPath) => {
 ipcMain.handle('open-files', async () => {
   const r = await dialog.showOpenDialog(mainWindow, {
     title: 'Add Videos', properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Video Files', extensions: ['mp4','mov','avi','mkv','webm','flv','wmv','m4v'] }],
+    filters: [{ name: 'Video Files', extensions: ['mp4','mov','avi','mkv','webm','flv','wmv','m4v','ts','mts','m2ts'] }],
   });
   return r.filePaths || [];
 });
@@ -100,7 +106,7 @@ ipcMain.handle('open-media', async () => {
     title: 'Add Media Files', properties: ['openFile', 'multiSelections'],
     filters: [
       { name: 'All Media', extensions: ['mp4','mov','avi','mkv','webm','flv','wmv','m4v','ts','mts','m2ts','mp3','aac','flac','wav','ogg','m4a','opus'] },
-      { name: 'Video', extensions: ['mp4','mov','avi','mkv','webm','flv','wmv','m4v'] },
+      { name: 'Video', extensions: ['mp4','mov','avi','mkv','webm','flv','wmv','m4v','ts','mts','m2ts'] },
       { name: 'Audio', extensions: ['mp3','aac','flac','wav','ogg','m4a','opus'] },
     ],
   });
@@ -114,7 +120,7 @@ ipcMain.handle('open-folders', async () => {
   return r.filePaths || [];
 });
 
-const VIDEO_EXTS = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i;
+const VIDEO_EXTS = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|ts|mts|m2ts)$/i;
 
 function scanFolderRecursive(folderPath) {
   let results = [];
@@ -283,13 +289,16 @@ async function sumDurations(files) {
   return total;
 }
 
+const TS_SAFE_INPUT_FLAGS = ['-fflags', '+genpts+discardcorrupt', '-err_detect', 'ignore_err'];
+
 function runJoin(fileList, outputFilePath, progressOffset = 0) {
   return new Promise((resolve, reject) => {
     const tmpList = path.join(os.tmpdir(), `vj_concat_${Date.now()}.txt`);
     const listContent = fileList.map(f => `file '${f.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n');
     fs.writeFileSync(tmpList, listContent, 'utf8');
 
-    const ffmpeg = spawn(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', tmpList, '-c', 'copy', outputFilePath]);
+    // Input flags let MPEG-TS sources with damaged packets join instead of aborting/truncating.
+    const ffmpeg = spawn(ffmpegPath, ['-y', ...TS_SAFE_INPUT_FLAGS, '-f', 'concat', '-safe', '0', '-i', tmpList, '-c', 'copy', outputFilePath]);
     let stderr = '';
 
     ffmpeg.stderr.on('data', (data) => {
@@ -314,7 +323,7 @@ function runJoin(fileList, outputFilePath, progressOffset = 0) {
 function runTrim(inputPath, outputPath, start, end) {
   return new Promise((resolve, reject) => {
     const duration = Math.max(0, end - start);
-    const args = ['-y', '-ss', String(start), '-i', inputPath, '-t', String(duration), '-c', 'copy', '-avoid_negative_ts', 'make_zero', outputPath];
+    const args = ['-y', ...TS_SAFE_INPUT_FLAGS, '-ss', String(start), '-i', inputPath, '-t', String(duration), '-c', 'copy', '-avoid_negative_ts', 'make_zero', outputPath];
     const ffmpeg = spawn(ffmpegPath, args);
     let stderr = '';
 

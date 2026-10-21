@@ -22,6 +22,25 @@
     #titlebar .logo { font-size: 13px; font-weight: 800; letter-spacing: 0.12em;
       color: var(--accent); text-transform: uppercase; }
     #titlebar .logo span { color: var(--muted); }
+    #app-version { -webkit-app-region: no-drag; margin-left: 10px; padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer;
+      font-family: 'Cascadia Mono', 'Consolas', monospace; font-size: 11px; transition: all 0.15s; }
+    #app-version:hover { border-color: var(--accent3); color: var(--accent3); }
+    #titlebar .title-left { display: flex; align-items: center; }
+    #changelog-overlay { display: none; position: fixed; inset: 0; background: rgba(20,18,12,0.55);
+      z-index: 150; align-items: center; justify-content: center; }
+    #changelog-overlay.active { display: flex; }
+    #changelog-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      width: min(560px, 90vw); max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; }
+    #changelog-panel header { display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 700; }
+    #changelog-panel header button { border: none; background: transparent; color: var(--muted);
+      font-size: 16px; cursor: pointer; }
+    #changelog-body { padding: 14px 18px; overflow-y: auto; font-size: 13px; line-height: 1.55; user-select: text; }
+    #changelog-body h4 { font-size: 14px; margin: 14px 0 4px; color: var(--accent); }
+    #changelog-body h4:first-child { margin-top: 0; }
+    #changelog-body h5 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 2px; }
+    #changelog-body li { margin-left: 18px; }
     #win-controls { display: flex; gap: 6px; -webkit-app-region: no-drag; }
     #win-controls button { width: 28px; height: 28px; border-radius: 4px; border: none;
       background: transparent; color: var(--muted); font-size: 14px; cursor: pointer;
@@ -307,7 +326,10 @@
 <body>
 
 <div id="titlebar">
-  <div class="logo">Clip<span>Forge</span></div>
+  <div class="title-left">
+    <div class="logo">Clip<span>Forge</span></div>
+    <button id="app-version" title="Version history — click to see what changed">v…</button>
+  </div>
   <div id="win-controls">
     <button id="btn-min">&#x2013;</button>
     <button id="btn-max">&#x25A1;</button>
@@ -335,7 +357,7 @@
       <div class="drop-icon">🎬</div>
       <div class="drop-copy">
         <h2>Drop videos here</h2>
-        <p>MP4 · MOV · AVI · MKV · WEBM · FLV</p>
+        <p>MP4 · MOV · AVI · MKV · WEBM · FLV · TS</p>
       </div>
       <button class="browse-btn" id="browse-btn">Browse Files</button>
     </div>
@@ -480,7 +502,7 @@
       <div class="drop-icon">✂️</div>
       <div class="drop-copy">
         <h2>Drop a video here</h2>
-        <p>MP4 · MOV · AVI · MKV · WEBM · FLV</p>
+        <p>MP4 · MOV · AVI · MKV · WEBM · FLV · TS</p>
       </div>
       <button class="browse-btn" id="browse-cut-btn">Browse File</button>
     </div>
@@ -830,6 +852,13 @@
 </div>
 
 <!-- PROGRESS OVERLAY -->
+<div id="changelog-overlay">
+  <div id="changelog-panel">
+    <header><span id="changelog-title">Version history</span><button id="changelog-close" title="Close">✕</button></header>
+    <div id="changelog-body"></div>
+  </div>
+</div>
+
 <div id="progress-overlay">
   <h3 id="progress-title">Processing…</h3>
   <div id="progress-card">
