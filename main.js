@@ -240,7 +240,7 @@ ipcMain.handle('get-duration', async (_, filePath) => {
 ipcMain.handle('get-info', async (_, filePath) => {
   return new Promise((resolve) => {
     execFile(ffprobePath, ['-v', 'error',
-      '-select_streams', 'v:0', '-show_entries', 'stream=width,height:format=duration,size',
+      '-select_streams', 'v:0', '-show_entries', 'stream=width,height,codec_name:format=duration,size',
       '-of', 'json', filePath],
       (err, stdout) => {
         if (err) return resolve({ duration: null, width: null, height: null, size: null });
@@ -251,6 +251,7 @@ ipcMain.handle('get-info', async (_, filePath) => {
             duration: parseFloat(j.format && j.format.duration) || null,
             width: stream.width || null,
             height: stream.height || null,
+            vcodec: stream.codec_name || null,
             size: parseInt(j.format && j.format.size) || null,
           });
         } catch (_) { resolve({ duration: null, width: null, height: null, size: null }); }
@@ -296,6 +297,18 @@ async function sumDurations(files) {
 
 const TS_SAFE_INPUT_FLAGS = ['-fflags', '+genpts+discardcorrupt', '-err_detect', 'ignore_err'];
 
+// ── Cancellation: the Stop button kills the running ffmpeg and the half-written output is removed ──
+let cancelRequested = false;
+const activeProcs = new Set();
+function trackProc(proc) { activeProcs.add(proc); proc.on('close', () => activeProcs.delete(proc)); }
+function rmQuiet(p) { try { if (p && fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} }
+ipcMain.handle('begin-job', () => { cancelRequested = false; return true; });
+ipcMain.handle('cancel-job', () => {
+  cancelRequested = true;
+  for (const p of activeProcs) { try { p.kill(); } catch (_) {} }
+  return true;
+});
+
 function runJoin(fileList, outputFilePath, progressOffset = 0) {
   return new Promise((resolve, reject) => {
     const tmpList = path.join(os.tmpdir(), `vj_concat_${Date.now()}.txt`);
@@ -304,6 +317,7 @@ function runJoin(fileList, outputFilePath, progressOffset = 0) {
 
     // Input flags let MPEG-TS sources with damaged packets join instead of aborting/truncating.
     const ffmpeg = spawn(ffmpegPath, ['-y', ...TS_SAFE_INPUT_FLAGS, '-f', 'concat', '-safe', '0', '-i', tmpList, '-c', 'copy', outputFilePath]);
+    trackProc(ffmpeg);
     let stderr = '';
 
     ffmpeg.stderr.on('data', (data) => {
@@ -317,6 +331,7 @@ function runJoin(fileList, outputFilePath, progressOffset = 0) {
 
     ffmpeg.on('close', (code) => {
       fs.unlink(tmpList, () => {});
+      if (cancelRequested) { rmQuiet(outputFilePath); return reject(new Error('Canceled')); }
       if (code === 0) resolve(outputFilePath);
       else reject(new Error(`FFmpeg error (code ${code})\n${stderr.slice(-400)}`));
     });
@@ -330,6 +345,7 @@ function runTrim(inputPath, outputPath, start, end) {
     const duration = Math.max(0, end - start);
     const args = ['-y', ...TS_SAFE_INPUT_FLAGS, '-ss', String(start), '-i', inputPath, '-t', String(duration), '-c', 'copy', '-avoid_negative_ts', 'make_zero', outputPath];
     const ffmpeg = spawn(ffmpegPath, args);
+    trackProc(ffmpeg);
     let stderr = '';
 
     ffmpeg.stderr.on('data', (data) => {
@@ -342,6 +358,7 @@ function runTrim(inputPath, outputPath, start, end) {
     });
 
     ffmpeg.on('close', (code) => {
+      if (cancelRequested) { rmQuiet(outputPath); return reject(new Error('Canceled')); }
       if (code === 0) resolve(outputPath);
       else reject(new Error(`FFmpeg error (code ${code})\n${stderr.slice(-400)}`));
     });
@@ -382,6 +399,7 @@ ipcMain.handle('join-folders', async (_, { folders, outputFolder, outputFile, mo
   if (mode === 'per-folder' || mode === 'both') {
     for (let i = 0; i < folders.length; i++) {
       const folder = folders[i];
+      if (cancelRequested) throw new Error('Canceled');
       if (!folder.files.length) continue;
       mainWindow.webContents.send('batch-status', {
         step: `Joining folder ${i+1}/${folders.length}: ${folder.name}`,
@@ -450,6 +468,8 @@ function buildConvertArgs(inputPath, outputPath, s, pass = 0) {
     cmd.push('-vn');
   } else {
     cmd.push('-c:v', vcodec);
+    // HEVC copied into MP4/MOV needs the hvc1 tag to play in Windows/Apple players (H.264 must NOT get it)
+    if (vcodec === 'copy' && s.srcVcodec === 'hevc' && ['mp4', 'mov', 'm4v'].includes(s.fmt || 'mp4')) cmd.push('-tag:v', 'hvc1');
     if (vcodec !== 'copy') {
       const cq = Math.max(0, Math.min(51, Math.round((100 - (s.quality || 55)) * 51 / 100)));
       const preset = SPEED_MAP_CONV[s.speed] || 'medium';
@@ -523,6 +543,7 @@ function runFfmpeg(args, progressOffset = 0) {
   return new Promise((resolve, reject) => {
     // run in tmpdir so two-pass log files don't land in a read-only install dir
     const ffmpeg = spawn(ffmpegPath, args, { cwd: os.tmpdir() });
+    trackProc(ffmpeg);
     let stderr = '';
     ffmpeg.stderr.on('data', (data) => {
       stderr += data.toString();
@@ -533,7 +554,7 @@ function runFfmpeg(args, progressOffset = 0) {
         mainWindow.webContents.send('progress', progressOffset + parseInt(h)*3600 + parseInt(mn)*60 + parseFloat(sc));
       }
     });
-    ffmpeg.on('close', (code) => code === 0
+    ffmpeg.on('close', (code) => cancelRequested ? reject(new Error('Canceled')) : code === 0
       ? resolve(true)
       : reject(new Error(`FFmpeg error (code ${code})\n${stderr.slice(-500)}`)));
     ffmpeg.on('error', () => reject(new Error('FFmpeg executable not found.')));
@@ -557,17 +578,23 @@ function verifyOutput(outPath, srcDuration, mode) {
   });
 }
 
-ipcMain.handle('convert-video', async (_, { inputPath, outputPath, settings, srcDuration }) => {
-  const s = settings || {};
+ipcMain.handle('convert-video', async (_, { inputPath, outputPath, settings, srcDuration, srcVcodec }) => {
+  const s = { ...(settings || {}), srcVcodec };
+  if (cancelRequested) throw new Error('Canceled');
   const outPath = uniqueOutputPath(outputPath);
   const vcodec = effectiveVcodec(s);
   const twoPass = s.twoPass && vcodec !== 'copy' && !isAudioOnly(s);
 
-  if (twoPass) {
-    await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 1));
-    await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 2));
-  } else {
-    await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 0));
+  try {
+    if (twoPass) {
+      await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 1));
+      await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 2));
+    } else {
+      await runFfmpeg(buildConvertArgs(inputPath, outPath, s, 0));
+    }
+  } catch (err) {
+    if (cancelRequested) rmQuiet(outPath);
+    throw err;
   }
 
   const verified = await verifyOutput(outPath, srcDuration, s.verifyMode || 'quick');

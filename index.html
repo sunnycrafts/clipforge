@@ -230,6 +230,12 @@
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
     #current-op .op-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #batch-step { font-size: 12px; color: rgba(255,255,255,0.5); font-family: 'Cascadia Mono', 'Consolas', monospace; }
+    #cancel-btn { align-self: center; margin-top: 2px; padding: 8px 26px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.25); background: rgba(196,43,28,0.18); color: #fff;
+      font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.05em; transition: background 0.15s, border-color 0.15s; }
+    #cancel-btn:hover:not(:disabled) { background: var(--danger); border-color: var(--danger); }
+    #cancel-btn:disabled { opacity: 0.55; cursor: default; }
     #progress-bar-wrap { width: 100%; height: 6px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
     #progress-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width 0.3s ease; }
     #batch-progress-wrap { width: 100%; height: 3px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
@@ -255,6 +261,15 @@
     .cut-selected { margin-left: auto; font-size: 12px; color: var(--muted); font-family: 'Cascadia Mono', 'Consolas', monospace; }
     .cut-selected strong { color: var(--accent3); font-weight: 700; }
 
+    /* CONVERT TAB LAYOUT — panel scrolls; queue keeps a usable height; Convert button stays visible */
+    #tab-convert { overflow-y: auto; padding-right: 6px; }
+    #tab-convert > * { flex-shrink: 0; }
+    #tab-convert .conv-queue { flex: none; min-height: 170px; max-height: 260px; }
+    #tab-convert .conv-queue .scroll-list { min-height: 120px; }
+    #tab-convert::-webkit-scrollbar { width: 6px; }
+    #tab-convert::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .conv-footer { position: sticky; bottom: 0; z-index: 3; background: var(--bg); padding: 10px 0 2px;
+      border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
     /* CONVERT TAB */
     .conv-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; flex-shrink: 0; }
     .conv-field { display: flex; flex-direction: column; gap: 4px; }
@@ -578,27 +593,44 @@
       <div class="drop-icon">🔄</div>
       <div class="drop-copy">
         <h2>Drop files here</h2>
-        <p>MP4 · MKV · MOV · AVI · WEBM · MP3 · AAC · FLAC · WAV</p>
+        <p>MP4 · MKV · MOV · AVI · WEBM · TS · MP3 · AAC · FLAC · WAV</p>
       </div>
       <button class="browse-btn" id="browse-conv-btn">Browse Files</button>
     </div>
 
     <div class="step-label">
-      <span class="step-num">2</span><h3>Preset</h3>
+      <span class="step-num">2</span><h3>Queue</h3>
+    </div>
+    <div class="list-wrap conv-queue">
+      <div class="list-header">
+        <div class="list-header-left"><h3 id="conv-list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Queue — 0 files</h3></div>
+        <button id="clear-conv-btn">Clear</button>
+      </div>
+      <ul class="scroll-list" id="conv-list">
+        <li class="empty-state">
+          <div class="empty-icon">🔄</div>
+          <div class="empty-title">No files added yet</div>
+          <div class="empty-sub">Drop files above or click Browse Files</div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="step-label">
+      <span class="step-num">3</span><h3>Preset</h3>
     </div>
     <div class="preset-row" id="conv-preset-row">
       <button class="preset-btn" data-preset="fast">⚡ Fast</button>
-      <button class="preset-btn active" data-preset="balanced">⚖ Balanced</button>
+      <button class="preset-btn" data-preset="balanced">⚖ Balanced</button>
       <button class="preset-btn" data-preset="hq">🎯 High Quality</button>
       <button class="preset-btn" data-preset="mobile">📱 Mobile</button>
       <button class="preset-btn" data-preset="youtube">📺 YouTube</button>
       <button class="preset-btn" data-preset="audio">🎵 Audio Only</button>
-      <button class="preset-btn" data-preset="remux">🔁 Remux</button>
+      <button class="preset-btn active" data-preset="remux" title="Re-wrap into MP4 without re-encoding: instant, no quality loss (default)">🔁 Remux</button>
       <button class="preset-btn" data-preset="archive">📦 Archive</button>
     </div>
 
     <div class="step-label">
-      <span class="step-num">3</span><h3>Settings</h3>
+      <span class="step-num">4</span><h3>Settings</h3>
     </div>
     <div class="conv-settings card">
       <div class="conv-section-title">Video</div>
@@ -756,23 +788,7 @@
       </div>
     </div>
 
-    <div class="step-label">
-      <span class="step-num">4</span><h3>Queue</h3>
-    </div>
-    <div class="list-wrap">
-      <div class="list-header">
-        <div class="list-header-left"><h3 id="conv-list-title" style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Queue — 0 files</h3></div>
-        <button id="clear-conv-btn">Clear</button>
-      </div>
-      <ul class="scroll-list" id="conv-list">
-        <li class="empty-state">
-          <div class="empty-icon">🔄</div>
-          <div class="empty-title">No files added yet</div>
-          <div class="empty-sub">Drop files above or click Browse Files</div>
-        </li>
-      </ul>
-    </div>
-
+    <div class="conv-footer">
     <div class="options-row">
       <label class="option-toggle"><input type="checkbox" id="conv-save-source" checked> Save to source folder</label>
       <label class="option-toggle"><input type="checkbox" id="conv-delete-source"> Delete source when done</label>
@@ -789,6 +805,7 @@
         <div class="status-line" id="status-line-conv">Add files to convert</div>
       </div>
       <button class="join-btn" id="conv-btn" disabled>Convert All</button>
+    </div>
     </div>
   </div>
 
@@ -871,6 +888,7 @@
       <span id="progress-label">Starting…</span>
       <span>Remaining: <strong id="stat-remaining">—</strong></span>
     </div>
+    <button id="cancel-btn" title="Stop now — the file being written is deleted">■ Stop</button>
   </div>
 </div>
 

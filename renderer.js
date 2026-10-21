@@ -306,7 +306,7 @@ joinBtn.addEventListener('click', async () => {
     finishOverlay(); showToast(`✓ Saved: ${basename(r.outputPath)}`, 'success', 5000);
     if (deleteSourceFiles.checked) { files = []; updateFilesUI(); }
     if (openFolderFiles.checked) window.api.showInFolder(r.outputPath);
-  } catch(err) { hideOverlay(); showToast('Error: ' + err.message.split('\n')[0], 'error', 6000); }
+  } catch(err) { jobFailed(err); }
   finally { window.api.removeAllListeners(); }
 });
 
@@ -532,12 +532,34 @@ folderJoinBtn.addEventListener('click', async () => {
       const folderToOpen = (folderMode === 'all-in-one' || folderMode === 'both') ? dirname(resultPath) : resultPath;
       window.api.openFolder(folderToOpen);
     }
-  } catch(err) { hideOverlay(); showToast('Error: ' + err.message.split('\n')[0], 'error', 6000); }
+  } catch(err) { jobFailed(err); }
   finally { window.api.removeAllListeners(); }
 });
 
 // ─── Overlay helpers ──────────────────────────────────────────────────────────
+let jobCanceled = false;
+const cancelBtn = document.getElementById('cancel-btn');
+cancelBtn.addEventListener('click', () => {
+  jobCanceled = true;
+  cancelBtn.disabled = true;
+  cancelBtn.textContent = 'Stopping…';
+  window.api.cancelJob();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && overlay.classList.contains('active') && !cancelBtn.disabled) cancelBtn.click();
+});
+// Shared handler for a failed/stopped job (join, folders, cut)
+function jobFailed(err) {
+  hideOverlay();
+  if (jobCanceled || /Canceled/.test(err.message)) showToast('Stopped — unfinished file removed', 'error', 5000);
+  else showToast('Error: ' + err.message.split('\n')[0], 'error', 6000);
+}
+
 function showOverlay(title) {
+  jobCanceled = false;
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = '■ Stop';
+  window.api.beginJob();
   progressTitle.textContent = title;
   currentOpName.textContent = 'Starting…';
   batchStep.textContent = '';
@@ -768,7 +790,7 @@ cutBtn.addEventListener('click', async () => {
     finishOverlay(); showToast(`✓ Saved: ${basename(r.outputPath)}`, 'success', 5000);
     if (deleteSourceCut.checked) { cutFile = null; updateCutUI(); }
     if (openFolderCut.checked) window.api.showInFolder(r.outputPath);
-  } catch(err) { hideOverlay(); showToast('Error: ' + err.message.split('\n')[0], 'error', 6000); }
+  } catch(err) { jobFailed(err); }
   finally { window.api.removeAllListeners(); }
 });
 
@@ -949,7 +971,7 @@ const CONV_PRESETS = {
   mobile:   { fmt:'mp4', vcodec:'libx264', speed:'fast',     quality:60, res:'p720',     acodec:'aac',     abitrate:'128k', audioOnly:false, hwaccel:true,  faststart:false },
   youtube:  { fmt:'mp4', vcodec:'libx264', speed:'balanced', quality:55, res:'p1080',    acodec:'aac',     abitrate:'192k', audioOnly:false, hwaccel:false, faststart:true  },
   audio:    { fmt:'mp3', vcodec:'copy',    speed:'fast',     quality:55, res:'original', acodec:'mp3',     abitrate:'192k', audioOnly:true,  hwaccel:false, faststart:false },
-  remux:    { fmt:'mp4', vcodec:'copy',    speed:'fast',     quality:55, res:'original', acodec:'aac',     abitrate:'192k', audioOnly:false, hwaccel:false, faststart:false },
+  remux:    { fmt:'mp4', vcodec:'copy',    speed:'fast',     quality:55, res:'original', acodec:'copy',    abitrate:'192k', audioOnly:false, hwaccel:false, faststart:false },
   archive:  { fmt:'mkv', vcodec:'libx265', speed:'slowest',  quality:85, res:'original', acodec:'flac',    abitrate:'256k', audioOnly:false, hwaccel:false, faststart:false },
 };
 
@@ -1134,6 +1156,7 @@ async function addConvFiles(paths) {
       const info = await window.api.getInfo(f.path).catch(() => ({}));
       f.duration = (info && info.duration) || 0;
       f.size = (info && info.size) || 0;
+      f.vcodec = (info && info.vcodec) || null;
       f.probing = false;
       done++;
       const now = Date.now();
@@ -1227,7 +1250,9 @@ convBtn.addEventListener('click', async () => {
   jobTotalDuration = convFiles.reduce((s, f) => s + (f.duration || 0), 0);
 
   for (let i = 0; i < convFiles.length; i++) {
+    if (jobCanceled) break;
     const f = convFiles[i];
+    if (f.status === 'done') continue;   // resume after Stop: don't redo finished files
     convFiles[i].status = 'working';
     updateConvUI();
     batchBar.style.width = Math.round((i / total) * 100) + '%';
@@ -1257,7 +1282,7 @@ convBtn.addEventListener('click', async () => {
     const outPath = convOutputPath(f.path, settings);
     try {
       const r = await window.api.convertVideo({
-        inputPath: f.path, outputPath: outPath, settings, srcDuration: fileDur,
+        inputPath: f.path, outputPath: outPath, settings, srcDuration: fileDur, srcVcodec: f.vcodec,
       });
       convFiles[i].status = 'done';
       convFiles[i].outPath = (r && r.outputPath) || outPath;
@@ -1267,18 +1292,26 @@ convBtn.addEventListener('click', async () => {
         await window.api.deletePaths([f.path]);
       }
     } catch (err) {
-      convFiles[i].status = 'error';
-      showToast(`Error on ${f.name}: ${err.message.split('\n')[0]}`, 'error', 7000);
+      if (jobCanceled || /Canceled/.test(err.message)) {
+        convFiles[i].status = 'pending';   // stopped mid-file; partial output already removed
+      } else {
+        convFiles[i].status = 'error';
+        showToast(`Error on ${f.name}: ${err.message.split('\n')[0]}`, 'error', 7000);
+      }
     }
     updateConvUI();
   }
 
+  window.api.removeAllListeners();
+  const doneCount = convFiles.filter(f => f.status === 'done').length;
+  if (jobCanceled) {
+    hideOverlay();
+    showToast(`Stopped — ${doneCount} of ${total} converted. Press Convert All to continue.`, 'error', 7000);
+    return;
+  }
   progressBar.style.width = '100%';
   batchBar.style.width = '100%';
   finishOverlay();
-  window.api.removeAllListeners();
-
-  const doneCount = convFiles.filter(f => f.status === 'done').length;
   showToast(`✓ ${doneCount}/${total} file${total !== 1 ? 's' : ''} converted`, 'success', 5000);
   const firstDone = convFiles.find(f => f.status === 'done' && f.outPath);
   if (convOpenFolder.checked && firstDone) {
@@ -1314,6 +1347,7 @@ document.getElementById('changelog-close').addEventListener('click', () => chang
 changelogOverlay.addEventListener('click', (e) => { if (e.target === changelogOverlay) changelogOverlay.classList.remove('active'); });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+applyConvPreset('remux');   // default: re-wrap without re-encoding (instant, lossless) — best for TS captures
 refreshOutputField();
 refreshFinalOutputField();
 refreshCutOutputField();

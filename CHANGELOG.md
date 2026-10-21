@@ -2,6 +2,21 @@
 
 All notable changes to ClipForge. Versioning follows [semver](https://semver.org).
 
+## 1.1.3
+
+### Added
+- **Stop button** on the progress screen (also the Esc key) for every operation — convert, join, folders and cut. It stops ffmpeg immediately and deletes the half-written output file; sources are never touched.
+- Convert: after Stopping, **Convert All** resumes with the files that aren't finished yet instead of starting over.
+
+### Changed
+- **Convert now starts on the Remux preset.** It re-wraps TS (and other) files into MP4 without re-encoding: seconds per file instead of minutes, no quality loss, same file size. Audio is copied too. HEVC video is tagged `hvc1` so it plays in Windows/Apple players. Pick another preset when you actually want to re-encode.
+
+## 1.1.2
+
+### Fixed
+- **Convert tab layout:** the tab was taller than the window and couldn't scroll, so added files and the Convert button were pushed off-screen and it looked like nothing happened. The queue now sits directly under the drop zone, the tab scrolls, and the Convert button/options stay pinned at the bottom.
+- Drop-zone hint on the Convert tab now lists TS.
+
 ## 1.1.1
 
 ### Fixed
