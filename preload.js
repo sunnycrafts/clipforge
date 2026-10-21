@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   convertVideo: (opts) => ipcRenderer.invoke('convert-video', opts),
   detectHw: () => ipcRenderer.invoke('detect-hw'),
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  scanMediaFolder: (p) => ipcRenderer.invoke('scan-media-folder', p),
   pickSubtitle: () => ipcRenderer.invoke('pick-subtitle'),
   findDuplicates: (opts) => ipcRenderer.invoke('find-duplicates', opts),
   deletePaths: (paths) => ipcRenderer.invoke('delete-paths', paths),

@@ -2,6 +2,12 @@
 
 All notable changes to ClipForge. Versioning follows [semver](https://semver.org).
 
+## 1.1.1
+
+### Fixed
+- Convert tab: dropping a **folder** now works (scanned recursively for video/audio) instead of being rejected, and no longer jumps you to the Folders tab.
+- Convert tab: files appear in the queue immediately and their info loads in the background, instead of the queue staying empty until every file had been read — which made large batches look like they weren't recognised.
+
 ## 1.1.0
 
 ### Added

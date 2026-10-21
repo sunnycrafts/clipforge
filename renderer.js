@@ -77,18 +77,26 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ─── Global drag & drop routing ────────────────────────────────────────────────
 const VIDEO_EXT = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|ts|mts|m2ts)$/i;
 document.addEventListener('dragover', (e) => e.preventDefault());
-document.addEventListener('drop', async (e) => {
-  e.preventDefault();
-  const items = [...e.dataTransfer.items];
+// Split a drop into files (matching extRe) and folders. Must run synchronously inside the event.
+function collectDrop(e, extRe) {
   const folderPaths = [], filePaths = [];
-  items.forEach((item, i) => {
+  [...e.dataTransfer.items].forEach((item, i) => {
     const f = e.dataTransfer.files[i];
     if (!f || !f.path) return;
     const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
     if (entry && entry.isDirectory) folderPaths.push(f.path);
-    else if (VIDEO_EXT.test(f.name)) filePaths.push(f.path);
+    else if (extRe.test(f.name)) filePaths.push(f.path);
   });
-  if (folderPaths.length) {
+  return { folderPaths, filePaths };
+}
+
+document.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const onConvert = document.querySelector('.tab-btn.active').dataset.tab === 'convert';
+  const { folderPaths, filePaths } = collectDrop(e, onConvert ? CONV_MEDIA_EXT : VIDEO_EXT);
+  if (onConvert && (folderPaths.length || filePaths.length)) {
+    await addConvDrop(folderPaths, filePaths);
+  } else if (folderPaths.length) {
     switchTab('folders');
     await addFolderPaths(folderPaths);
   } else if (filePaths.length) {
@@ -1110,18 +1118,52 @@ function convOutputPath(filePath, settings) {
   return dir + sepOf(dir) + stem + suffix + '.' + settings.fmt;
 }
 
+// Files appear in the queue immediately; their info is read in the background (4 at a time).
 async function addConvFiles(paths) {
-  for (const p of paths) {
-    if (convFiles.some(f => f.path === p)) continue;
-    const info = await window.api.getInfo(p).catch(() => ({}));
-    convFiles.push({ path: p, name: basename(p), duration: info.duration || 0, size: info.size || 0, status: 'pending' });
-  }
+  const known = new Set(convFiles.map(f => f.path));
+  const entries = [...new Set(paths)].filter(p => !known.has(p))
+    .map(p => ({ path: p, name: basename(p), duration: 0, size: 0, status: 'pending', probing: true }));
+  if (!entries.length) return;
+  convFiles.push(...entries);
   updateConvUI();
+
+  let next = 0, done = 0, lastDraw = 0;
+  const worker = async () => {
+    while (next < entries.length) {
+      const f = entries[next++];
+      const info = await window.api.getInfo(f.path).catch(() => ({}));
+      f.duration = (info && info.duration) || 0;
+      f.size = (info && info.size) || 0;
+      f.probing = false;
+      done++;
+      const now = Date.now();
+      if (now - lastDraw > 150 || done === entries.length) {
+        lastDraw = now;
+        updateConvUI();
+        if (done < entries.length) statusLineConv.textContent = `Reading file info… ${done}/${entries.length}`;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, entries.length) }, worker));
+  updateConvUI();
+}
+
+// Dropped folders are scanned recursively for video/audio files.
+async function addConvDrop(folderPaths, filePaths) {
+  let paths = [...filePaths];
+  if (folderPaths.length) {
+    const lists = await Promise.all(folderPaths.map(d => window.api.scanMediaFolder(d)));
+    const found = lists.flat();
+    if (!found.length && !filePaths.length) { showToast('No media files found in the dropped folder(s)', 'error'); return; }
+    showToast(`Found ${found.length} media file${found.length !== 1 ? 's' : ''}`, 'success');
+    paths = paths.concat(found);
+  }
+  await addConvFiles(paths);
 }
 
 function updateConvUI() {
   convListTitle.textContent = `Queue — ${convFiles.length} file${convFiles.length !== 1 ? 's' : ''}`;
-  convBtn.disabled = convFiles.length === 0 || (!convSaveSource.checked && !convCustomOutputDir);
+  convBtn.disabled = convFiles.length === 0 || convFiles.some(f => f.probing) || (!convSaveSource.checked && !convCustomOutputDir);
 
   if (!convFiles.length) {
     convList.innerHTML = `<li class="empty-state">
@@ -1139,7 +1181,7 @@ function updateConvUI() {
       <span class="file-icon">🎬</span>
       <div class="file-info">
         <div class="file-name">${escapeHtml(f.name)}</div>
-        <div class="file-meta">${fmtSize(f.size)}<span class="dot">·</span>${fmtDuration(f.duration)}</div>
+        <div class="file-meta">${f.probing ? 'reading…' : `${fmtSize(f.size)}<span class="dot">·</span>${fmtDuration(f.duration)}`}</div>
       </div>
       <span class="conv-file-status ${f.status}">${
         f.status === 'pending' ? 'Pending' :
@@ -1171,8 +1213,8 @@ convDropZone.addEventListener('dragover', (e) => { e.preventDefault(); convDropZ
 convDropZone.addEventListener('dragleave', (e) => { if (!convDropZone.contains(e.relatedTarget)) convDropZone.classList.remove('drag-over'); });
 convDropZone.addEventListener('drop', async (e) => {
   e.preventDefault(); e.stopPropagation(); convDropZone.classList.remove('drag-over');
-  const paths = [...e.dataTransfer.files].filter(f => CONV_MEDIA_EXT.test(f.name)).map(f => f.path);
-  if (paths.length) await addConvFiles(paths);
+  const { folderPaths, filePaths } = collectDrop(e, CONV_MEDIA_EXT);
+  if (folderPaths.length || filePaths.length) await addConvDrop(folderPaths, filePaths);
   else showToast('No supported media files dropped', 'error');
 });
 clearConvBtn.addEventListener('click', () => { convFiles = []; updateConvUI(); });

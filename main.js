@@ -122,17 +122,22 @@ ipcMain.handle('open-folders', async () => {
 
 const VIDEO_EXTS = /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|ts|mts|m2ts)$/i;
 
-function scanFolderRecursive(folderPath) {
+const MEDIA_EXTS = /\.(mp4|mkv|mov|avi|webm|flv|wmv|m4v|mp3|aac|flac|wav|ogg|m4a|opus|ts|mts|m2ts)$/i;
+
+function scanFolderRecursive(folderPath, extRe = VIDEO_EXTS) {
   let results = [];
   let entries;
   try { entries = fs.readdirSync(folderPath, { withFileTypes: true }); } catch (_) { return results; }
   for (const entry of entries) {
     const full = path.join(folderPath, entry.name);
-    if (entry.isDirectory()) results = results.concat(scanFolderRecursive(full));
-    else if (VIDEO_EXTS.test(entry.name)) results.push(full);
+    if (entry.isDirectory()) results = results.concat(scanFolderRecursive(full, extRe));
+    else if (extRe.test(entry.name)) results.push(full);
   }
   return results;
 }
+
+// Convert tab: video + audio files, recursive, sorted by path.
+ipcMain.handle('scan-media-folder', (_, folderPath) => scanFolderRecursive(folderPath, MEDIA_EXTS).sort());
 
 // Recursive so NVR/DVR-style exports (hourly subfolders, e.g. "2026Y08M20D00H")
 // are found; sorted by full path so chronological naming schemes join in order.
