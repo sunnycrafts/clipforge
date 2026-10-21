@@ -2,6 +2,11 @@
 
 All notable changes to ClipForge. Versioning follows [semver](https://semver.org).
 
+## 1.1.4
+
+### Fixed
+- Convert: after unticking "Save to source folder" and choosing a destination folder, the Convert All button stayed greyed out. It now enables as soon as a folder is chosen, and the status line says when an output folder is still needed.
+
 ## 1.1.3
 
 ### Added

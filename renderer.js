@@ -1125,7 +1125,7 @@ convSaveSource.addEventListener('change', () => {
 convOutputBrowse.addEventListener('click', async (e) => {
   e.stopPropagation();
   const p = await window.api.pickOutputFolder();
-  if (p) { convCustomOutputDir = p; convOutputDir.textContent = p; }
+  if (p) { convCustomOutputDir = p; convOutputDir.textContent = p; convOutputDir.classList.add('has-path'); updateConvUI(); }
 });
 
 convAudioOnly.addEventListener('change', () => {
@@ -1198,7 +1198,8 @@ function updateConvUI() {
     return;
   }
   const totalDur = convFiles.reduce((s, f) => s + (f.duration || 0), 0);
-  statusLineConv.textContent = `${convFiles.length} file${convFiles.length !== 1 ? 's' : ''} · ${fmtDuration(totalDur)} total`;
+  statusLineConv.textContent = `${convFiles.length} file${convFiles.length !== 1 ? 's' : ''} · ${fmtDuration(totalDur)} total`
+    + (!convSaveSource.checked && !convCustomOutputDir ? ' — choose an output folder to continue' : '');
   convList.innerHTML = convFiles.map((f, i) => `
     <li class="conv-file-item" data-index="${i}">
       <span class="file-icon">🎬</span>
