@@ -2,6 +2,11 @@
 
 All notable changes to ClipForge. Versioning follows [semver](https://semver.org).
 
+## 1.1.5
+
+### Changed
+- New app icon (film strip with play button and scissors) for the executable, installer, taskbar and window.
+
 ## 1.1.4
 
 ### Fixed
